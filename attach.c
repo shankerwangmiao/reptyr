@@ -389,8 +389,11 @@ int setup_steal_socket(struct steal_pty_state *steal) {
         return errno;
 
     steal->addr_un.sun_family = AF_UNIX;
-    snprintf(steal->addr_un.sun_path, sizeof(steal->addr_un.sun_path),
-             "%s/reptyr.sock", steal->tmpdir);
+    if (snprintf(steal->addr_un.sun_path, sizeof(steal->addr_un.sun_path),
+                 "%s/reptyr.sock", steal->tmpdir) >= sizeof(steal->addr_un.sun_path)) {
+        error("tmpdir path too long!");
+        return ENAMETOOLONG;
+    }
 
     if ((steal->sockfd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0)
         return errno;
@@ -398,9 +401,9 @@ int setup_steal_socket(struct steal_pty_state *steal) {
     if (bind(steal->sockfd, &steal->addr, sizeof(steal->addr_un)) < 0)
         return errno;
 
-    if (chown(steal->addr_un.sun_path, steal->target_stat.uid, steal->target_stat.gid) < 0)
+    if (chown(steal->addr_un.sun_path, steal->emulator_uid, -1) < 0)
         debug("chown %s: %s", steal->addr_un.sun_path, strerror(errno));
-    if (chown(steal->tmpdir, steal->target_stat.uid, steal->target_stat.gid) < 0)
+    if (chown(steal->tmpdir, steal->emulator_uid, -1) < 0)
         debug("chown %s: %s", steal->tmpdir, strerror(errno));
 
     return 0;
@@ -556,6 +559,7 @@ int steal_pty(pid_t pid, int *pty) {
         goto out;
 
     debug("Listening on socket: %s", steal.addr_un.sun_path);
+    debug("Attaching terminal emulator pid=%d", steal.emulator_pid);
 
     if ((err = grab_pid(steal.emulator_pid, &steal.child, &steal.child_scratch)))
         goto out;
